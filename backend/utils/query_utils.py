@@ -3,54 +3,34 @@ import pickle
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
-from openai import OpenAI
-from dotenv import load_dotenv
-
-# Load OpenAI API key
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 # Load embedding model
-model = SentenceTransformer('all-MiniLM-L6-v2')
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-def query_vector_db(query, store_dir="vector_store", top_k=3):
-    """
-    Given a user query, searches FAISS index and returns top similar pages.
-    """
-    query_vec = model.encode([query])
-    index = faiss.read_index(os.path.join(store_dir, "faiss.index"))
+def query_vector_db(query, k=3, store_dir="vector_store"):
+    index_path = os.path.join(store_dir, "faiss.index")
+    metadata_path = os.path.join(store_dir, "metadata.pkl")
 
-    D, I = index.search(np.array(query_vec).astype('float32'), k=top_k)
+    # Check if vector store exists
+    if not os.path.exists(index_path) or not os.path.exists(metadata_path):
+        return []
 
-    with open(os.path.join(store_dir, "metadata.pkl"), "rb") as f:
+    # Load FAISS index and metadata
+    index = faiss.read_index(index_path)
+    with open(metadata_path, "rb") as f:
         pages = pickle.load(f)
 
-    top_pages = [pages[i] for i in I[0]]
-    return top_pages
+    # Convert query to embedding
+    query_embedding = embedding_model.encode([query]).astype('float32')
 
+    # Search
+    distances, indices = index.search(query_embedding, k)
 
-def summarize_with_llm(query, passages):
-    """
-    Uses GPT to generate an answer using top-matched passages.
-    """
-    context = "\n\n".join([f"Page {p['page']}:\n{p['text']}" for p in passages])
+    passages = []
+    for idx in indices[0]:
+        if idx < len(pages):
+            passages.append({
+                "text": pages[idx]["text"],
+                "page": pages[idx]["page"]
+            })
 
-    prompt = f"""You are a helpful study assistant.
-Use the context below to answer the question briefly and accurately.
-Include the page numbers in your answer.
-
-Context:
-{context}
-
-Question: {query}
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a smart, concise study assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    return response.choices[0].message.content
+    return passages
