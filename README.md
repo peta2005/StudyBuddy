@@ -1,4 +1,4 @@
-# Smart Study Buddy 📚🤖
+# Smart Study Buddy 
 
 Smart Study Buddy is a secure, high-performance PDF-based question-answering assistant. It uses a **Retrieval-Augmented Generation (RAG)** pipeline to index PDF documents and answer user queries with precise page citations.
 
