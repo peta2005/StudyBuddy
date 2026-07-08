@@ -6,7 +6,7 @@ The project features a lightweight Python Flask backend and a modern React TypeS
 
 ---
 
-## 🚀 Key Features
+##  Key Features
 
 * **Instant PDF Processing:** Extracts text from uploaded PDFs, builds vector embeddings, and indexes them using **FAISS** for fast similarity search.
 * **Intelligent Answering:** Queries the **Groq Cloud API** using `llama-3.3-70b-versatile` for high-quality, contextual summaries.
@@ -17,7 +17,7 @@ The project features a lightweight Python Flask backend and a modern React TypeS
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 ### Frontend
 * **Core:** React 18 + TypeScript + Vite
@@ -34,7 +34,7 @@ The project features a lightweight Python Flask backend and a modern React TypeS
 
 ---
 
-## 💻 Local Setup
+##  Local Setup
 
 ### 1. Backend Setup
 1. Navigate to the backend directory:
@@ -83,7 +83,7 @@ The project features a lightweight Python Flask backend and a modern React TypeS
 
 ---
 
-## 🌐 Production Deployment
+##  Production Deployment
 
 ### 1. Frontend (Vercel)
 Connect your GitHub repository to [Vercel](https://vercel.com/) and deploy the `frontend/` directory. Set the `VITE_API_URL` environment variable to your production backend URL.
