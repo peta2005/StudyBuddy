@@ -1,215 +1,285 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, BookOpen, Upload } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Send, Paperclip, Settings, Zap, Target, Clock, Lock } from "lucide-react";
 import { UploadZone } from "@/components/UploadZone";
-import { useToast } from "@/components/ui/use-toast"; // ✅ Added
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  sources?: Array<{ page: number; excerpt: string }>;
-}
+import { ChatMessage, TypingMessage, type Message } from "@/components/ChatMessage";
+import { GeneralSettings } from "@/components/GeneralSettings";
+import { useSettings } from "@/hooks/useSettings";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch, parseApiError } from "@/lib/apiClient";
+import { useToast } from "@/components/ui/use-toast";
 
 interface ChatInterfaceProps {
+  chat: any;
   uploadedFile: File | null;
   onFileUploaded: (file: File) => void;
-  messages: Message[];
-  onMessagesChange: (messages: Message[]) => void;
+  updateChatMessages: (messages: Message[]) => void;
+  onClearHistory?: () => void;
+}
+
+function getTime() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 export const ChatInterface = ({
+  chat,
   uploadedFile,
   onFileUploaded,
-  messages,
-  onMessagesChange,
+  updateChatMessages,
+  onClearHistory,
 }: ChatInterfaceProps) => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [showUpload, setShowUpload] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { settings, updateSetting, resetSettings } = useSettings();
+  const { accessToken } = useAuth();
+  const { toast } = useToast();
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { toast } = useToast(); // ✅ Toast initialized
+  const messages: Message[] = chat?.messages || [];
+
+  useEffect(() => {
+    if (settings.autoScroll) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isLoading, settings.autoScroll]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    const userMessage: Message = { role: "user", content: input };
-    onMessagesChange([...messages, userMessage]);
+    const query = input;
+    const userMessage: Message = {
+      role: "user",
+      content: query,
+      timestamp: getTime(),
+    };
+    const newMessages = [...messages, userMessage];
+    updateChatMessages(newMessages);
     setInput("");
     setIsLoading(true);
 
+    const baseUrl = settings.backendUrl.replace(/\/$/, "");
+
+    if (!accessToken) {
+      updateChatMessages([
+        ...newMessages,
+        {
+          role: "assistant",
+          content: "Your session expired. Please sign in again.",
+          timestamp: getTime(),
+        },
+      ]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const response = await fetch("http://127.0.0.1:5000/ask", {
+      const response = await apiFetch(baseUrl, "/ask", accessToken, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: input }),
+        body: JSON.stringify({
+          query,
+          session_id: chat?.id,
+          session_title: chat?.title,
+        }),
       });
 
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response));
+      }
 
       const assistantMessage: Message = {
         role: "assistant",
         content: data.answer || "No response received from backend.",
         sources: data.sources || [],
+        timestamp: getTime(),
       };
 
-      onMessagesChange([...messages, userMessage, assistantMessage]);
+      updateChatMessages([...newMessages, assistantMessage]);
     } catch (error) {
-      console.error("Error:", error);
       const assistantMessage: Message = {
         role: "assistant",
-        content: "⚠️ Server error. Check Flask backend.",
+        content:
+          error instanceof Error && error.message === "Failed to fetch"
+            ? "Backend unreachable. Stop and restart the Flask server, then try again."
+            : error instanceof Error
+              ? error.message
+              : "Server error. Check that the Flask backend is running.",
+        timestamp: getTime(),
       };
-      onMessagesChange([...messages, userMessage, assistantMessage]);
+      updateChatMessages([...newMessages, assistantMessage]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleFileUpload = async (file: File) => {
-    onFileUploaded(file);
-    setShowUpload(false);
-
     const formData = new FormData();
     formData.append("pdf", file);
+    const baseUrl = settings.backendUrl.replace(/\/$/, "");
+
+    if (!accessToken) {
+      toast({
+        title: "Session expired",
+        description: "Please sign in again to upload documents.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
-      const response = await fetch("http://127.0.0.1:5000/upload", {
+      const response = await apiFetch(baseUrl, "/upload", accessToken, {
         method: "POST",
         body: formData,
       });
 
       if (response.ok) {
+        onFileUploaded(file);
         toast({
-          title: "✅ Upload successful!",
+          title: "Upload successful",
           description: `"${file.name}" is ready for questions.`,
           duration: 3000,
         });
       } else {
         toast({
-          title: "⚠️ Upload failed",
-          description: "Please check your backend or try again.",
+          title: "Upload failed",
+          description: await parseApiError(response),
           variant: "destructive",
         });
       }
-    } catch (err) {
-      console.error("Upload error:", err);
+    } catch {
       toast({
-        title: "❌ Server error",
-        description: "Could not connect to Flask backend.",
+        title: "Backend unreachable",
+        description: "Could not connect to Flask. Restart the backend and try again.",
         variant: "destructive",
       });
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (settings.enterToSend && e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const hasMessages = messages.length > 0;
+
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto">
-      <div className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <div>
-            {uploadedFile ? (
-              <>
-                <h2 className="font-semibold">{uploadedFile.name}</h2>
-                <p className="text-sm text-muted-foreground">
-                  Ask any question about your document
-                </p>
-              </>
-            ) : (
-              <>
-                <h2 className="font-semibold">Smart Study Buddy</h2>
-                <p className="text-sm text-muted-foreground">
-                  Upload a document to get started
-                </p>
-              </>
-            )}
-          </div>
+    <div className="chat-layout">
+      <header className="chat-header">
+        <div className="chat-header-left">
+          <h1 className="chat-title">
+            {uploadedFile ? uploadedFile.name.replace(/\.[^/.]+$/, "") : "Smart Study Buddy"}
+          </h1>
+          <p className="chat-subtitle">
+            {uploadedFile ? `${uploadedFile.name}` : "Ready to help you study"}
+          </p>
         </div>
-        {uploadedFile && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowUpload(true)}
-            className="gap-2"
-          >
-            <Upload className="w-4 h-4" />
-            Change Document
-          </Button>
+        <button
+          className="icon-btn"
+          title="General settings"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings size={17} />
+        </button>
+      </header>
+
+      <div className="chat-body">
+        {!uploadedFile && !hasMessages ? (
+          <div className="welcome-wrap">
+            <UploadZone onFileUploaded={handleFileUpload} />
+
+            <div className="feature-grid">
+              <div className="feature-card">
+                <div className="feature-icon"><Zap size={18} /></div>
+                <div>
+                  <p className="feature-title">Ask Anything</p>
+                  <p className="feature-desc">Get instant answers from your PDF</p>
+                </div>
+              </div>
+              <div className="feature-card">
+                <div className="feature-icon"><Target size={18} /></div>
+                <div>
+                  <p className="feature-title">Accurate &amp; Relevant</p>
+                  <p className="feature-desc">AI finds the best answers from your document</p>
+                </div>
+              </div>
+              <div className="feature-card">
+                <div className="feature-icon"><Clock size={18} /></div>
+                <div>
+                  <p className="feature-title">Save Time</p>
+                  <p className="feature-desc">Study smarter and faster with AI</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="messages-wrap">
+            {messages.map((msg, i) => (
+              <ChatMessage key={i} message={msg} settings={settings} />
+            ))}
+
+            {isLoading && <TypingMessage compactMode={settings.compactMode} />}
+
+            <div ref={bottomRef} />
+          </div>
         )}
       </div>
 
-      <ScrollArea className="flex-1 p-6 space-y-6">
-        {!uploadedFile || showUpload ? (
-          <div className="text-center py-12 space-y-6">
-            <UploadZone onFileUploaded={handleFileUpload} />
-          </div>
-        ) : (
-          messages.map((message, index) => (
-            <div
-              key={index}
-              className={`flex ${
-                message.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              <div
-                className={`max-w-[80%] rounded-2xl p-4 ${
-                  message.role === "user"
-                    ? "bg-gradient-primary text-primary-foreground shadow-soft"
-                    : "bg-card border border-border shadow-soft"
-                }`}
-              >
-                <p className="whitespace-pre-wrap">{message.content}</p>
-              </div>
-            </div>
-          ))
-        )}
+      <div className="chat-input-wrap">
+        <div className="chat-input-bar">
+          <label className="attach-btn" title="Attach PDF">
+            <Paperclip size={18} />
+            <input
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFileUpload(f);
+              }}
+            />
+          </label>
 
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-card border border-border rounded-2xl p-4 shadow-soft">
-              <div className="flex gap-2">
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                <div
-                  className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                  style={{ animationDelay: "150ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                  style={{ animationDelay: "300ms" }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </ScrollArea>
-
-      <div className="border-t border-border p-6">
-        <div className="flex gap-3">
-          <Input
+          <input
+            id="chat-input-field"
+            className="chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSend()}
+            onKeyDown={handleKeyDown}
             placeholder={
               uploadedFile
                 ? "Ask a question about your document..."
-                : "Upload a document first..."
+                : "Upload a PDF first, or just ask anything..."
             }
-            className="flex-1 h-12 rounded-xl border-2"
-            disabled={isLoading || !uploadedFile}
+            disabled={isLoading}
           />
-          <Button
+
+          <button
+            id="send-btn"
+            className="send-btn"
             onClick={handleSend}
-            disabled={isLoading || !input.trim() || !uploadedFile}
-            size="lg"
-            className="bg-gradient-primary hover:shadow-glow px-6"
+            disabled={isLoading || !input.trim()}
           >
-            <Send className="w-5 h-5" />
-          </Button>
+            <Send size={16} />
+          </button>
         </div>
+
+        <p className="privacy-note">
+          <Lock size={11} />
+          Your documents are stored in your private account workspace.
+        </p>
       </div>
+
+      <GeneralSettings
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        settings={settings}
+        onUpdate={updateSetting}
+        onReset={resetSettings}
+        onClearHistory={onClearHistory}
+      />
     </div>
   );
 };

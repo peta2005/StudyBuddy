@@ -11,8 +11,13 @@ backend/vector_store/
 
 # Node
 node_modules/
-pdf-pal-genius/node_modules/
+frontend/node_modules/
 
 # Build
 dist/
 build/
+
+# Databases
+*.db
+*.sqlite
+

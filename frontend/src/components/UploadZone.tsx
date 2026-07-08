@@ -1,6 +1,5 @@
-import { useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Upload } from "lucide-react";
+import { useRef, useState } from "react";
+import { FileText } from "lucide-react";
 
 interface UploadZoneProps {
   onFileUploaded: (file: File) => void;
@@ -8,18 +7,45 @@ interface UploadZoneProps {
 
 export const UploadZone = ({ onFileUploaded }: UploadZoneProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      onFileUploaded(file);
-    }
+    if (file) onFileUploaded(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type === "application/pdf") onFileUploaded(file);
   };
 
   return (
-    <div className="flex flex-col items-center justify-center border-2 border-dashed border-border rounded-2xl p-8 bg-card shadow-soft">
-      <Upload className="w-8 h-8 text-primary mb-4" />
-      <p className="mb-4 text-muted-foreground text-sm">Drag & drop or click below to upload a PDF</p>
+    <div
+      className={`upload-zone ${dragging ? "upload-zone--drag" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      onClick={() => fileInputRef.current?.click()}
+    >
+      <div className="upload-icon-wrap">
+        <FileText size={32} />
+      </div>
+
+      <h3 className="upload-heading">Upload a PDF to begin</h3>
+      <p className="upload-sub">Drag &amp; drop your PDF here or click to browse</p>
+
+      <button
+        className="upload-btn"
+        onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+      >
+        <FileText size={15} />
+        Choose PDF
+      </button>
+
+      <p className="upload-limit">Max file size: 50MB</p>
+
       <input
         type="file"
         accept=".pdf"
@@ -27,9 +53,6 @@ export const UploadZone = ({ onFileUploaded }: UploadZoneProps) => {
         className="hidden"
         onChange={handleFileChange}
       />
-      <Button onClick={() => fileInputRef.current?.click()} className="bg-gradient-primary text-white">
-        Choose PDF
-      </Button>
     </div>
   );
 };

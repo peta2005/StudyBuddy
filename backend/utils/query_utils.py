@@ -2,9 +2,7 @@ import os
 import pickle
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
-# Load embedding model
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+from utils.embedding_utils import get_embedding_model
 
 def query_vector_db(query, k=3, store_dir="vector_store"):
     index_path = os.path.join(store_dir, "faiss.index")
@@ -20,7 +18,7 @@ def query_vector_db(query, k=3, store_dir="vector_store"):
         pages = pickle.load(f)
 
     # Convert query to embedding
-    query_embedding = embedding_model.encode([query]).astype('float32')
+    query_embedding = get_embedding_model().encode([query]).astype('float32')
 
     # Search
     distances, indices = index.search(query_embedding, k)

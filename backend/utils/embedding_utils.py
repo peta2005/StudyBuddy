@@ -1,21 +1,28 @@
 import os
+
+
+import logging
 import pickle
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
 
-# Load embedding model once
-model = SentenceTransformer('all-MiniLM-L6-v2')
+logger = logging.getLogger(__name__)
+_model = None
+
+def get_embedding_model():
+    global _model
+    if _model is None:
+        logger.info("Loading SentenceTransformer model (lazy)...")
+        from sentence_transformers import SentenceTransformer
+        _model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _model
+
 
 def create_vector_store(pages, store_dir="vector_store"):
-    """
-    Generates embeddings for each page and stores them in a FAISS index.
-    Also saves metadata (page numbers + text) as pickle file.
-    """
     os.makedirs(store_dir, exist_ok=True)
 
     texts = [p["text"] for p in pages]
-    embeddings = model.encode(texts, show_progress_bar=True)
+    embeddings = get_embedding_model().encode(texts, show_progress_bar=False)
 
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index.add(np.array(embeddings).astype('float32'))
@@ -24,4 +31,4 @@ def create_vector_store(pages, store_dir="vector_store"):
     with open(os.path.join(store_dir, "metadata.pkl"), "wb") as f:
         pickle.dump(pages, f)
 
-    print(f"✅ Vector store created with {len(pages)} pages.")
+    logger.info("Vector store created with %d pages.", len(pages))

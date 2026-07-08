@@ -1,13 +1,13 @@
 // src/api.ts
+import { apiFetch } from "@/lib/apiClient";
 
-const API_BASE = "http://localhost:5000"; // Flask backend URL
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:5000";
 
-// Upload PDF
-export async function uploadPDF(file: File) {
+export async function uploadPDF(file: File, accessToken: string) {
   const formData = new FormData();
   formData.append("pdf", file);
 
-  const res = await fetch(`${API_BASE}/upload`, {
+  const res = await apiFetch(API_BASE, "/upload", accessToken, {
     method: "POST",
     body: formData,
   });
@@ -16,11 +16,9 @@ export async function uploadPDF(file: File) {
   return res.json();
 }
 
-// Ask Question
-export async function askQuestion(query: string) {
-  const res = await fetch(`${API_BASE}/ask`, {
+export async function askQuestion(query: string, accessToken: string) {
+  const res = await apiFetch(API_BASE, "/ask", accessToken, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
   });
 
